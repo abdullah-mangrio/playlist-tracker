@@ -574,9 +574,10 @@ td {
   <h3>// Import Existing Dataset</h3>
   <p>Upload a CSV once to seed the shared database. Duplicates are automatically skipped.</p>
   <div class="csv-format">
-    <div>Required columns <em>(header row optional)</em>:</div>
-    <div><span>url</span>&nbsp;&nbsp;,&nbsp;&nbsp;<span>episodes</span>&nbsp;&nbsp;,&nbsp;&nbsp;<span>speaker</span> (Y or N)&nbsp;&nbsp;,&nbsp;&nbsp;<span>channel</span></div>
-    <div style="margin-top:4px;"><em>e.g. → https://youtube.com/playlist?list=PL…&nbsp;&nbsp;,&nbsp;&nbsp;18&nbsp;&nbsp;,&nbsp;&nbsp;Y&nbsp;&nbsp;,&nbsp;&nbsp;Lex Fridman</em></div>
+    <div>✓ Auto-detects column order from header. Both formats work:</div>
+    <div style="margin-top:4px;"><span>url</span> , <span>episodes</span> , <span>speaker</span> , <span>channel</span></div>
+    <div><span>number</span> , <span>url</span> , <span>channel</span> , <span>episodes</span> , <span>multiple_speakers</span> &nbsp;<em>← your format ✓</em></div>
+    <div style="margin-top:4px;"><em>Header row required. Speaker column values: Y or N.</em></div>
   </div>
   <input type="file" id="file-inp" accept=".csv,.txt">
   <button class="btn btn-acc" onclick="document.getElementById('file-inp').click()">
@@ -854,15 +855,34 @@ document.getElementById('file-inp').addEventListener('change', function(e) {
     const lines = ev.target.result.split(/\r?\n/).filter(l => l.trim());
     let start = 0;
     const fl = lines[0].toLowerCase();
-    if (fl.includes('url') || fl.includes('episode') || fl.includes('channel')) start = 1;
+
+    // Auto-detect column indices from header row
+    let iUrl = 1, iEps = 3, iSpk = 4, iCh = 2; // default: your CSV format (number,url,channel,episodes,speaker)
+    if (fl.includes('url')) {
+      start = 1;
+      const headers = parseCSV(lines[0]).map(h => h.trim().toLowerCase().replace(/^["']|["']$/g, ''));
+      const find = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)));
+      const ui = find(['url']);
+      const ei = find(['episode', 'eps', 'count']);
+      const si = find(['speaker', 'multiple']);
+      const ci = find(['channel', 'name']);
+      if (ui !== -1) iUrl = ui;
+      if (ei !== -1) iEps = ei;
+      if (si !== -1) iSpk = si;
+      if (ci !== -1) iCh = ci;
+    }
 
     let added = 0, dupes = 0, errs = 0;
     const promises = [];
 
     for (let i = start; i < lines.length; i++) {
-      const cols = parseCSV(lines[i]);
-      if (cols.length < 4) { errs++; continue; }
-      const [url, eps, spk, ch] = cols.map(c => c.trim().replace(/^["']|["']$/g, ''));
+      const raw = parseCSV(lines[i]);
+      const cols = raw.map(c => c.trim().replace(/^["']|["']$/g, ''));
+      if (cols.length < 3) { errs++; continue; }
+      const url = cols[iUrl] || '';
+      const eps = cols[iEps] || '0';
+      const spk = cols[iSpk] || 'N';
+      const ch  = cols[iCh]  || '';
       if (!url || !url.startsWith('http')) { errs++; continue; }
 
       if (isDupe(url)) { dupes++; continue; }
